@@ -47,8 +47,8 @@ UserSchema. Representa um usuário autenticado. Possui id numérico, nome, email
 Após definir os esquemas, o arquivo compila os Models Mongoose para Setor, Maquina, Manutencao e User e implementa a função seedIfEmpty. Essa função é chamada ao iniciar o banco. Ela verifica se já existem dados e, caso as coleções estejam vazias, insere dados iniciais:
 
 Cria dois usuários:
-Admin com email admin arroba smpm ponto local e senha 123456, papel admin.
-Operador com email oper arroba smpm ponto local e senha 123456, papel user.
+Admin com email admin@smpm.local e senha 123456, papel admin.
+Operador com email oper@smpm.local e senha 123456, papel user.
 
 Cria alguns setores, por exemplo Produção, Logística e Usinagem, com IDs gerados por getNextSeq.
 
@@ -193,7 +193,7 @@ Incluem, por exemplo, StatusBadge e InlineStatusSelect, para representar e edita
 Telas do sistema
 
 Login.vue
-Tela inicial de autenticação. Possui campos para email e senha. Ao enviar, chama o store de auth para validar as credenciais na API. Se a autenticação for bem-sucedida, redireciona o usuário para a rota informada em redirect ou para o Dashboard. Em caso de erro, exibe mensagem ao usuário. As credenciais padrão, geradas pelo seed, são admin arroba smpm ponto local com senha 123456 para login como administrador e oper arroba smpm ponto local com senha 123456 para login como operador.
+Tela inicial de autenticação. Possui campos para email e senha. Ao enviar, chama o store de auth para validar as credenciais na API. Se a autenticação for bem-sucedida, redireciona o usuário para a rota informada em redirect ou para o Dashboard. Em caso de erro, exibe mensagem ao usuário. As credenciais padrão, geradas pelo seed, são admin@smpm.local  com senha 123456 para login como administrador e oper@smpm.local com senha 123456 para login como operador.
 
 Dashboard.vue
 Mostra um resumo da operação de manutenção. Carrega os KPIs do backend ou calcula a partir da lista de manutenções. Exibe cartões com as quantidades de manutenções abertas, atrasadas, marcadas para hoje e concluídas no mês. Usa gráficos para visualizar distribuição por status e outros recortes. Também oferece um formulário rápido para criar uma manutenção já agendada para o dia atual, escolhendo setor e máquina.
@@ -225,7 +225,7 @@ Depois, inicie o backend. Em um terminal, acesse a pasta backend. Execute npm in
 
 Em outro terminal, inicie o front. Acesse a pasta projeto_somativa. Execute npm install para instalar as dependências do front. Verifique se o arquivo .env aponta VITE_API_URL para http dois pontos barra barra localhost dois pontos quatro mil barra api. Em seguida, execute npm run dev. O Vite iniciará o servidor de desenvolvimento, normalmente em http dois pontos barra barra localhost dois pontos cinco mil cento e setenta e três.
 
-Por fim, abra o navegador em http dois pontos barra barra localhost dois pontos cinco mil cento e setenta e três. A tela inicial será a de login. Use um dos usuários criados automaticamente pelo seed. Por exemplo, email admin arroba smpm ponto local e senha 123456. Após o login, você será direcionado ao Dashboard e poderá navegar por todas as funcionalidades do sistema.
+Por fim, abra o navegador em http dois pontos barra barra localhost dois pontos cinco mil cento e setenta e três. A tela inicial será a de login. Use um dos usuários criados automaticamente pelo seed. Por exemplo, email admin@smpm.local e senha 123456. Após o login, você será direcionado ao Dashboard e poderá navegar por todas as funcionalidades do sistema.
 
 Observações finais
 
