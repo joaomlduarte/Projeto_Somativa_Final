@@ -117,26 +117,99 @@ const clsStatus = (s) => ({
   hoje: 'bg-blue-50 text-blue-800 border border-blue-200',
 }[s] || 'bg-gray-50 text-gray-800 border border-gray-200')
 
+// Converte o status bruto do backend (PENDENTE, EM_ANDAMENTO, CONCLUIDA)
+// + datas da manutenção em um status "analítico" usado no dashboard:
+// 'aberta' | 'hoje' | 'atrasada' | 'concluida'
+function statusDash(m) {
+  if (!m) return 'aberta'
+
+  // Normaliza o status para maiúsculas
+  const raw = String(m.status || '').toUpperCase()
+
+  // Se está concluída no banco, já tratamos como concluída
+  if (raw === 'CONCLUIDA') return 'concluida'
+
+  // Para PENDENTE / EM_ANDAMENTO vamos usar a data para classificar
+  const ref = m.dataAgendada || m.dataRealizada || m.data
+  if (!ref) return 'aberta'
+
+  const d = new Date(ref)
+  if (Number.isNaN(d.getTime())) return 'aberta'
+
+  // Início e fim do dia de hoje
+  const hoje = new Date()
+  const inicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate())
+  const fimHoje = new Date(inicioHoje)
+  fimHoje.setDate(fimHoje.getDate() + 1)
+
+  if (d < inicioHoje) return 'atrasada'          // antes de hoje
+  if (d >= inicioHoje && d < fimHoje) return 'hoje' // hoje
+  return 'aberta'                                // depois de hoje
+}
+
 /* ------------------ Distribuições (barras CSS simples) ------------------ */
 const distPorStatus = computed(() => {
   const base = { aberta: 0, atrasada: 0, concluida: 0, hoje: 0 }
+
   for (const m of (manutencoes.lista || [])) {
-    if (base[m.status] !== undefined) base[m.status]++
+    const st = statusDash(m)          // usa o status analítico
+    if (base[st] !== undefined) base[st]++
   }
+
   const total = Object.values(base).reduce((a, b) => a + b, 0) || 1
-  return statusList.map(s => ({ key: s, value: base[s], pct: Math.round((base[s] / total) * 100) }))
+  return statusList.map(s => ({
+    key: s,
+    value: base[s],
+    pct: Math.round((base[s] / total) * 100),
+  }))
 })
+
+// ------------------ Distribuição por setor ------------------
+// Calcula quantas manutenções existem por setor,
+// para alimentar o card "Top setores" no dashboard.
 const distPorSetor = computed(() => {
-  const counts = {}
-  for (const m of (manutencoes.lista || [])) {
+  // Garante que sempre temos um array de manutenções
+  const lista = manutencoes.lista || []
+  if (!lista.length) return []
+
+  // Mapa setorId -> { nome, qtd }
+  const mapa = new Map()
+
+  for (const m of lista) {
+    // Encontra a máquina vinculada à manutenção
     const maq = maquinas.lista.find(x => x.id === m.maquinaId)
-    const set = maq ? setores.lista.find(s => s.id === maq.setorId) : null
-    const nome = set?.nome || '—'
-    counts[nome] = (counts[nome] || 0) + 1
+    if (!maq) continue
+
+    // Encontra o setor da máquina
+    const setor = setores.lista.find(s => s.id === maq.setorId)
+
+    // Nome que será exibido no dashboard
+    const nome = setor?.nome || 'Sem setor'
+    const key = setor?.id ?? 'sem_setor'
+
+    // Recupera a contagem atual (se existir) ou inicializa
+    const atual = mapa.get(key) || { nome, qtd: 0 }
+
+    // Incrementa a quantidade de manutenções naquele setor
+    atual.qtd += 1
+
+    // Atualiza o mapa
+    mapa.set(key, atual)
   }
-  const arr = Object.entries(counts).map(([nome, qtd]) => ({ nome, qtd }))
-  const total = arr.reduce((a, b) => a + b.qtd, 0) || 1
-  return arr.map(x => ({ ...x, pct: Math.round((x.qtd / total) * 100) })).sort((a,b)=>b.qtd-a.qtd).slice(0,5)
+
+  // Converte o mapa para array
+  const arr = Array.from(mapa.values())
+
+  // Calcula o total para gerar porcentagens
+  const total = arr.reduce((soma, row) => soma + row.qtd, 0) || 1
+
+  // Ordena do maior para o menor e adiciona o campo pct
+  return arr
+    .sort((a, b) => b.qtd - a.qtd)
+    .map(row => ({
+      ...row,
+      pct: Math.round((row.qtd / total) * 100),
+    }))
 })
 
 /* ------------------ Widgets existentes ------------------ */
@@ -144,7 +217,10 @@ const distPorSetor = computed(() => {
 const taxaConclusao = computed(() => {
   const total = (manutencoes.lista || []).length
   if (!total) return 0
-  const concluidas = (manutencoes.lista || []).filter(m => m.status === 'concluida').length
+
+  const concluidas = (manutencoes.lista || [])
+    .filter(m => statusDash(m) === 'concluida').length
+
   return concluidas / total
 })
 
@@ -199,7 +275,13 @@ const labelsDash = computed(() =>
 
 const listaFiltradaDash = computed(() => {
   let base = (manutencoes.lista || [])
-  if (statusFiltro.value) base = base.filter(m => m.status === statusFiltro.value)
+
+  // Filtra pelo status "lógico" do dashboard
+  if (statusFiltro.value) {
+    base = base.filter(m => statusDash(m) === statusFiltro.value)
+  }
+
+  // Filtra por setor (mesma lógica de antes)
   if (setorFiltro.value) {
     base = base.filter(m => {
       const maq = maquinas.lista.find(x => x.id === m.maquinaId)
@@ -212,12 +294,14 @@ const listaFiltradaDash = computed(() => {
 // Série 1: Produtividade (concluídas/dia) no período selecionado
 const serieConcluidas = computed(() => {
   const mapa = Object.fromEntries(diasDash.value.map(d => [d, 0]))
+
   for (const m of listaFiltradaDash.value) {
-    if (m.status === 'concluida') {
-      const dd = String(m.data || '').slice(0,10)
+    if (statusDash(m) === 'concluida') {
+      const dd = String(m.data || '').slice(0, 10)
       if (dd in mapa) mapa[dd]++
     }
   }
+
   return diasDash.value.map(d => mapa[d])
 })
 
@@ -228,16 +312,20 @@ const stackSeries = computed(() => {
     hoje:     Object.fromEntries(diasDash.value.map(d => [d, 0])),
     atrasada: Object.fromEntries(diasDash.value.map(d => [d, 0])),
   }
+
   for (const m of listaFiltradaDash.value) {
-    const dd = String(m.data || '').slice(0,10)
+    const dd = String(m.data || '').slice(0, 10)
     if (!(dd in base.aberta)) continue
-    if (m.status === 'aberta')   base.aberta[dd]++
-    if (m.status === 'hoje')     base.hoje[dd]++
-    if (m.status === 'atrasada') base.atrasada[dd]++
+
+    const st = statusDash(m)
+    if (st === 'aberta')   base.aberta[dd]++
+    if (st === 'hoje')     base.hoje[dd]++
+    if (st === 'atrasada') base.atrasada[dd]++
   }
+
   return {
-    aberta: diasDash.value.map(d => base.aberta[d]),
-    hoje: diasDash.value.map(d => base.hoje[d]),
+    aberta:   diasDash.value.map(d => base.aberta[d]),
+    hoje:     diasDash.value.map(d => base.hoje[d]),
     atrasada: diasDash.value.map(d => base.atrasada[d]),
   }
 })
@@ -334,12 +422,10 @@ const stackSeries = computed(() => {
                   <div class="text-xs text-gray-500 mt-1">{{ m.data }} • {{ m.maquinaNome }} • {{ m.setorNome }}</div>
                 </div>
                 <div class="flex items-center gap-2">
-                  <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium" :class="clsStatus(m.status)">
-                    {{ labelStatus(m.status) }}
-                  </span>
-                  <select class="border rounded px-2 py-1 text-xs" :value="m.status" @change="alterarStatusRapido(m.id, $event.target.value)" title="Alterar status">
-                    <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-                  </select>
+                  <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium":class="clsStatus(statusDash(m))">{{ labelStatus(statusDash(m)) }}</span>
+                    <select class="border rounded px-2 py-1 text-xs":value="statusDash(m)"@change="alterarStatusRapido(m.id, $event.target.value)"title="Alterar status">
+                      <option v-for="opt in statusOptions":key="opt.value":value="opt.value">{{ opt.label }}</option>
+                    </select>
                   <button class="text-xs text-blue-600" @click="router.push({ name: 'detalhe', params: { id: m.id } })">
                     Detalhes
                   </button>
@@ -462,11 +548,11 @@ const stackSeries = computed(() => {
               </div>
               <div class="flex items-center justify-between mt-1">
                 <span class="text-gray-500">Concluídas:</span>
-                <span class="font-medium">{{ (manutencoes.lista || []).filter(m => m.status==='concluida').length }}</span>
+                <span class="font-medium">{{ (manutencoes.lista || []).filter(m => statusDash(m) === 'concluida').length }}</span>
               </div>
               <div class="flex items-center justify-between mt-1">
                 <span class="text-gray-500">Abertas:</span>
-                <span class="font-medium">{{ (manutencoes.lista || []).filter(m => ['aberta','hoje','atrasada'].includes(m.status)).length }}</span>
+                <span class="font-medium">{{ (manutencoes.lista || []).filter(m =>['aberta','hoje','atrasada'].includes(statusDash(m))).length }}</span>
               </div>
               <p class="text-xs text-gray-500 mt-3">
                 Atualiza automaticamente com as manutenções.
