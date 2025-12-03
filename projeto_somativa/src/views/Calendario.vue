@@ -34,6 +34,15 @@ onMounted(async () => {
 function pad(n) { return String(n).padStart(2, '0') }
 function ymd(d) { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}` }
 
+// Converte qualquer valor de data (Date, ISO string etc.) para 'YYYY-MM-DD'.
+// Se não conseguir converter, devolve null para não quebrar nada.
+function toYmdFromAny(value) {
+  if (!value) return null                // se vier null/undefined, já sai
+  const d = new Date(value)              // tenta criar um objeto Date
+  if (Number.isNaN(d.getTime())) return null // se a data for inválida, ignora
+  return ymd(d)                          // reaproveita o helper ymd já existente
+}
+
 const hoje = new Date()
 const hojeStr = ymd(hoje)
 
@@ -69,7 +78,10 @@ const grade = computed(() => {
     const d = new Date(start)
     d.setDate(start.getDate() + i)
     const y = ymd(d)
-    const items = manutencoes.lista.filter(m => m.data === y)
+
+    const lista = manutencoes.lista || []
+    const items = lista.filter(m => toYmdFromAny(m.data) === y)
+    
     cells.push({
       date: d,
       inMonth: d.getMonth() === mes.value,
